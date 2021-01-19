@@ -1,105 +1,205 @@
-using Toybox.WatchUi as Ui;
-using Toybox.Graphics as Gfx;
-using Toybox.System as Sys;
-using Toybox.Lang as Lang;
-using Toybox.Communications as Comm;
-using Toybox.System as Sys;
-using Toybox.Time as Time;
-using Toybox.Timer as Timer;
+using Toybox.WatchUi;
+using Toybox.Graphics;
+using Toybox.System;
+using Toybox.Lang;
+using Toybox.Communications;
+using Toybox.System;
 
-class BusStopView extends Ui.View {
-	var schedule = null;
-	var tmr;
+class CompassDrawable extends WatchUi.Drawable {
+
+	var bearing = 0;
+	var aWidth = 2;
+	var aLength = 6;
+	var aColor = Graphics.COLOR_RED;
+	
+	function initialize(settings) {
+		WatchUi.Drawable.initialize(settings);
+		
+		aWidth  = settings[:aWidth];
+		aLength = settings[:aLength];
+		aColor  = settings[:aColor];
+	}
+
+	function setBearing(b) {
+		bearing = Math.PI * (b - 90) / 180;
+	}
+
+	function draw(dc) {
+		var rPts = new[7];
+		var aPts = [
+			[-0.5*aLength, -0.5*aWidth],
+			[ 0.0,         -0.5*aWidth],
+			[ 0.0,         -1.0*aWidth],
+			[ 0.5*aLength,           0],
+			[ 0.0,          1.0*aWidth],
+			[ 0.0,          0.5*aWidth],
+			[-0.5*aLength,  0.5*aWidth]
+		];
+	
+		var s = Math.sin(bearing);
+  		var c = Math.cos(bearing);
+
+		for (var i = 0; i < 7; i++) {
+			var p = aPts[i];
+			rPts[i] = [
+				locX + width  * (p[0] * c - p[1] * s),
+				locY + height * (p[0] * s + p[1] * c)
+			];
+		}
+
+		dc.setColor(aColor, Graphics.COLOR_TRANSPARENT);
+		dc.fillPolygon(rPts);
+	}
+}
+
+
+class BusStopView extends WatchUi.View {
+	var stops = null;
+	var app;
+	var compass;
+	
+	var offset = 0;
+	var sensors;
+	var position;
     
-    function intialize() {
-    	View.initialize();
-    }
-
-    //! Load your resources here
-    function onLayout(dc) {
-    }
-
-    //! Called when this View is brought to the foreground. Restore
-    //! the state of this View and prepare it to be shown. This includes
-    //! loading resources into memory.
-    function onShow() {
-    	tmr = new Timer.Timer();
-    	tmr.start(method(:redraw), 1000, true);
-    }
-    
-    //! Called when this View is removed from the screen. Save the
-    //! state of this View here. This includes freeing resources from
-    //! memory.
-    function onHide() {
-    	tmr.stop();
-    }
-
-    //! Update the view
-    function onUpdate(dc) {
-    	var string;
-
-        // Set background color
-        dc.setColor( Gfx.COLOR_TRANSPARENT, Gfx.COLOR_BLACK );
-        dc.clear();
-        dc.setColor( Gfx.COLOR_WHITE, Gfx.COLOR_TRANSPARENT );
-
-        if( schedule != null ) {
-        	var ts = new Time.Moment(schedule[1][4] / 1000);
-        	var duration = Time.now().subtract(ts);
-        	var ts_greg = Time.Gregorian.info(ts, Time.FORMAT_MEDIUM);
-        	var dur_greg =  Time.Gregorian.info(new Time.Moment(duration.value()), Time.FORMAT_SHORT);
-        	
-        	/* Timezone offset */
-        	dur_greg.hour -= 2;
-        	
-        	var arr = Lang.format("$1$:$2$:$3$", [
-        		(ts_greg.hour - 2),
-        		(ts_greg.min).format("%02u"),
-        		(ts_greg.sec).format("%02u")
-        	]);
-        	
-        	var due = "";
-        	if (dur_greg.hour > 0) {
-        		due += dur_greg.hour + " h ";
-        	}
-        	if (dur_greg.min > 0) {
-        		due += dur_greg.min + " min ";
-        	}
-        	if (dur_greg.sec > 0) {
-        		due += dur_greg.sec + " sec ";
-        	}
-        	
-			dc.drawText( (dc.getWidth() / 2), (dc.getHeight() / 2) - 80, Gfx.FONT_LARGE, schedule[1][2], Gfx.TEXT_JUSTIFY_CENTER );        
-            dc.drawText( (dc.getWidth() / 2), (dc.getHeight() / 2) - 40, Gfx.FONT_SMALL, schedule[1][1], Gfx.TEXT_JUSTIFY_CENTER );
-            dc.drawText( (dc.getWidth() / 2), (dc.getHeight() / 2) - 20, Gfx.FONT_SMALL, schedule[1][3], Gfx.TEXT_JUSTIFY_CENTER );
-            dc.drawText( (dc.getWidth() / 2), (dc.getHeight() / 2) + 10, Gfx.FONT_SMALL, arr, Gfx.TEXT_JUSTIFY_CENTER );
-            dc.drawText( (dc.getWidth() / 2), (dc.getHeight() / 2) + 40, Gfx.FONT_SMALL, due, Gfx.TEXT_JUSTIFY_CENTER );
-        }
-        else {
-            dc.drawText( (dc.getWidth() / 2), (dc.getHeight() / 2), Gfx.FONT_SMALL, "No schedule avail", Gfx.TEXT_JUSTIFY_CENTER );
-        }
-    }
-    
-    function setPosition(info) {    	
-    	var url = "http://web.0l.de:8080/";
-    	var parameters = { "Circle" => info.position.toDegrees()[0] + "," + 
-    							       info.position.toDegrees()[1] + ",150",
-    					   "ReturnList" => "StopPointName,DestinationName,LineName,EstimatedTime" };
-    	var options = { :method => Comm.HTTP_REQUEST_METHOD_GET };
+    function initialize(a) {
+    	WatchUi.View.initialize();
     	
-    	Comm.makeJsonRequest(url, parameters, options, method(:requestCompleted));
+    	app = a;
+    }
+
+    function onLayout(dc) {
+    	var compassX = dc.getWidth() / 2;
+    	var compassY = dc.getHeight() / 2 - 60;
+    	
+    	compass = new CompassDrawable({
+    		:locX => compassX,
+    		:locY => compassY,
+    		:width => 11,
+    		:height => 11,
+    		:aWidth => 2,
+    		:aLength => 6,
+    		:aColor => Graphics.COLOR_DK_RED
+    	});
+    }
+
+    function onShow() {
+    	Position.enableLocationEvents(Position.LOCATION_CONTINUOUS, method(:onPosition));
+        
+	    Sensor.setEnabledSensors([Sensor.SENSOR_HEARTRATE]);
+    	Sensor.enableSensorEvents(method(:onSensor));
+    }
+    
+    function onHide() {
+    	Position.enableLocationEvents(Position.LOCATION_DISABLE, method(:updateStops));
+    }
+    
+    function onPosition(positionInfo) {
+    	System.println("Position: " + positionInfo.position.toDegrees());
+    
+    	position = positionInfo;
+    	updateStops();
+    }
+
+	function onSensor(sensorInfo) {
+	    System.println("Heading: " + 180.0 * Math.PI / sensorInfo.heading);
+	    
+	    sensors = sensorInfo;
+		requestUpdate();
+	}
+
+    function onUpdate(dc) {
+        // Set background color
+        dc.setColor(Graphics.COLOR_TRANSPARENT, Graphics.COLOR_BLACK);
+        dc.clear();
+        
+        var midW = dc.getWidth() / 2;
+        var midH = dc.getHeight() / 2;
+        var top = Graphics.getFontAscent(Graphics.FONT_SMALL);
+        
+        if (stops != null) {
+        	if (stops.size() > 0) {
+		        if (offset >= stops.size()) {
+		        	offset = stops.size() - 1;
+		        }
+		        
+		        var stop = stops[offset];
+		        
+		        var dist = stop["dist"] < 1000
+		        	       ? stop["dist"].format("%.0f") + " m"
+		        	       : (stop["dist"] / 1000).format("%.1f") + " km";
+		        	       
+				var bearing = stop["bearing"].format("%.0f") + "° (" + stop["bearing_str"] + ")";
+		        	       
+				var y = midH;
+				
+				var bDeg = stop["bearing"];
+				var hDeg = 180.0 * sensors.heading / Math.PI;
+	
+				dc.setColor(Graphics.COLOR_RED, Graphics.COLOR_TRANSPARENT);
+				dc.setPenWidth(4);
+				dc.drawArc(midW, midH, midW-2, Graphics.ARC_CLOCKWISE, -bDeg+5+90, -bDeg-5+90);
+				
+				dc.setColor(Graphics.COLOR_YELLOW, Graphics.COLOR_TRANSPARENT);
+				dc.setPenWidth(4);
+				dc.drawArc(midW, midH, midW-2, Graphics.ARC_CLOCKWISE, -hDeg+5, -hDeg-5);
+		        
+		        compass.setBearing(bDeg);
+		        compass.draw(dc);
+				
+				dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
+		        dc.drawText(midW, y, Graphics.FONT_MEDIUM, stop["name"], Graphics.TEXT_JUSTIFY_CENTER + Graphics.TEXT_JUSTIFY_VCENTER);
+		        
+		        y += dc.getFontAscent(Graphics.FONT_SMALL) + dc.getFontDescent(Graphics.FONT_MEDIUM);
+		        
+		        if (stop["indicator"].length() > 0) {
+		        	dc.setColor(Graphics.COLOR_WHITE, Graphics.COLOR_TRANSPARENT);
+		        	dc.drawText(midW, y, Graphics.FONT_SMALL, stop["indicator"], Graphics.TEXT_JUSTIFY_CENTER + Graphics.TEXT_JUSTIFY_VCENTER);
+		        }
+		        
+		        y += dc.getFontAscent(Graphics.FONT_TINY) + dc.getFontDescent(Graphics.FONT_SMALL);
+		        
+		        dc.setColor(Graphics.COLOR_LT_GRAY, Graphics.COLOR_TRANSPARENT);
+		        dc.drawText(midW, y, Graphics.FONT_TINY, dist, Graphics.TEXT_JUSTIFY_CENTER);
+		        
+		        y += dc.getFontAscent(Graphics.FONT_TINY) + dc.getFontDescent(Graphics.FONT_TINY);
+		        
+		        dc.drawText(midW, y, Graphics.FONT_TINY, bearing, Graphics.TEXT_JUSTIFY_CENTER);
+		        
+		        app.stopId = stop["id"];
+	        }
+	        else {
+	            dc.drawText(midW, midH, Graphics.FONT_SMALL, "No stops found!", Graphics.TEXT_JUSTIFY_CENTER);
+	        }
+	    }
+        else {
+            dc.drawText(midW, midH, Graphics.FONT_SMALL, "Loading...", Graphics.TEXT_JUSTIFY_CENTER);
+        }
+    }
+    
+    function updateStops() {
+    	var degs = position.position.toDegrees();
+    	var params = {
+    		"latitude"  => degs[0],
+    		"longitude" => degs[1],
+    		"distance" => 10000,
+    		"limit" => 50
+    	};
+
+    	var options = {
+    		:method => Communications.HTTP_REQUEST_METHOD_GET,
+    		:responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_JSON
+    	};
+
+    	Communications.makeWebRequest(app.api_url + "/stops", params, options, method(:requestCompleted));
     }
     
     function requestCompleted(responseCode, data) {
-    	Sys.println("Request completed: " + responseCode);
+    	System.println("Request completed: " + responseCode);
     
     	if (responseCode == 200) {
-    		schedule = data;
-    		redraw();
+    		stops = data;
+    		WatchUi.requestUpdate();
     	}
     }
-    
-   	function redraw() {
-   		WatchUi.requestUpdate();
-   	}
 }

@@ -1,6 +1,6 @@
 using Toybox.WatchUi;
 
-class BusStopDelegate extends WatchUi.BehaviorDelegate {
+class DepartureDelegate extends WatchUi.BehaviorDelegate {
 	var app;
 
 	function initialize(a) {
@@ -10,7 +10,7 @@ class BusStopDelegate extends WatchUi.BehaviorDelegate {
 	}
 	
 	function onNextPage() {
-		app.view.offset += 1;
+		app.offset += 1;
 		
 		WatchUi.requestUpdate();
 		
@@ -18,8 +18,8 @@ class BusStopDelegate extends WatchUi.BehaviorDelegate {
 	}
 	
 	function onPreviousPage() {
-		if (app.view.offset > 0) {
-        	app.view.offset -= 1;
+		if (app.offset > 0) {
+        	app.offset -= 1;
         	
         	WatchUi.requestUpdate();
 		}
@@ -27,9 +27,9 @@ class BusStopDelegate extends WatchUi.BehaviorDelegate {
 		return true;
 	}
 
-	function onSelect() {
+	function onBack() {
 		app.offset = 0;
-		WatchUi.pushView(new DepartureView(app), new DepartureDelegate(app), WatchUi.SLIDE_LEFT);
+		WatchUi.popView(WatchUi.SLIDE_RIGHT);
 		
 		return true;
 	}

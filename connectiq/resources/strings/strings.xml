@@ -1,3 +1,7 @@
 <strings>
-    <string id="AppName">ASEAG Fahrplan</string>
+    <string id="AppName">Bus Stops</string>
+    <string id="ApiUrl">API URL</string>
+    <string id="ApiUrlPrompt">API URL:</string>
+    <string id="ApiUrlLocalhost">http://localhost:8080</string>
+    <string id="ApiUrlNulll">https://connectiq-ura.0l.de</string>
 </strings>

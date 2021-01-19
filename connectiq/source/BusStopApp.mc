@@ -1,54 +1,57 @@
-using Toybox.Application as App;
-using Toybox.Position as Position;
-using Toybox.Time as Time;
+using Toybox.Application;
+using Toybox.Position;
+using Toybox.Time;
+using Toybox.Sensor;
+using Toybox.System;
 
-class BusStopApp extends App.AppBase {
-    var mView;
-    var mDelegate;
+class BusStopApp extends Application.AppBase {
+    var view;
+    var delegate;
+    var position;
+    var sensors;
+    var api_url;
     
-    function intialize() {
-    	AppBase.initialize();
-    }
-
-    //! onStart() is called on application start up
-    function onStart() {
-        Position.enableLocationEvents(Position.LOCATION_CONTINUOUS, method(:onPosition));
-    }
-
-    //! onStop() is called when your application is exiting
-    function onStop() {
-        Position.enableLocationEvents(Position.LOCATION_DISABLE, method(:onPosition));
+    var offset = 0;
+	var stopId = 0;
+    
+    function initialize() {
+    	Application.AppBase.initialize();
+    	
+    	loadSettings();
     }
     
-    function fakePosition() {
-        var pos = new Position.Info();
-        
-        pos.accuracy = 0;
-		pos.altitude = 0;
-		pos.heading = 0;
-		pos.speed = 0;
-		pos.when = Time.now();
-		pos.position = new Position.Location({
-			:latitude => 50.7855,
-			:longitude => 6.0541,
-			:format => :degrees
-		});
-        
-        mView.setPosition(pos);
+    function onSettingsChanged() {
+    	loadSettings();
+    }
+    
+    function loadSettings() {
+    	var api_url_index = 1; //getProperty("api_url_index");
+    	
+    	switch (api_url_index) {
+    		case 0:
+    			api_url = "https://localhost:8080";
+    			break;
+    			
+    		case 1:
+    			api_url = "https://connectiq-ura.0l.de";
+    			break;
+    	}
+    	
+    	System.println(api_url);
     }
 
-    function onPosition(info) {
-        positionView.setPosition(info);
+    function onStart(state) {
+    }
+
+    function onStop(state) {
     }
 
     //! Return the initial view of your application here
     function getInitialView() {
-        mView = new BusStopView();
-        mDelegate = new BusStopDelegate();
+        view = new BusStopView(self);
+        delegate = new BusStopDelegate(self);
         
-        fakePosition();
-
-        return [ mView, mDelegate ];
+        return [ view, delegate ];
     }
 
 }
